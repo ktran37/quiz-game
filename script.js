@@ -1,5 +1,19 @@
-// DOM elements
+// Dark mode toggle
+const darkModeToggle = document.getElementById("dark-mode-toggle");
 
+if (localStorage.getItem("darkMode") === "true") {
+  document.body.classList.add("dark");
+  darkModeToggle.textContent = "Light Mode";
+}
+
+darkModeToggle.addEventListener("click", () => {
+  document.body.classList.toggle("dark");
+  const isDark = document.body.classList.contains("dark");
+  darkModeToggle.textContent = isDark ? "Light Mode" : "Dark Mode";
+  localStorage.setItem("darkMode", isDark);
+});
+
+// DOM elements
 const startScreen = document.getElementById("start-screen");
 const quizScreen = document.getElementById("quiz-screen");
 const resultScreen = document.getElementById("result-screen");
@@ -14,6 +28,8 @@ const maxScoreSpan = document.getElementById("max-score");
 const resultMessage = document.getElementById("result-message");
 const restartButton = document.getElementById("restart-btn");
 const progressBar = document.getElementById("progress");
+const prevBtn = document.getElementById("prev-btn");
+const nextBtn = document.getElementById("next-btn");
 
 const quizQuestions = [
   {
@@ -67,6 +83,7 @@ const quizQuestions = [
 let currentQuestionIndex = 0;
 let score = 0;
 let answersDisabled = false;
+let userAnswers = []; // null = unanswered, otherwise index of chosen answer
 
 totalQuestionsSpan.textContent = quizQuestions.length;
 maxScoreSpan.textContent = quizQuestions.length;
@@ -74,12 +91,25 @@ maxScoreSpan.textContent = quizQuestions.length;
 // event listeners
 startButton.addEventListener("click", startQuiz);
 restartButton.addEventListener("click", restartQuiz);
+prevBtn.addEventListener("click", () => {
+  currentQuestionIndex--;
+  showQuestion();
+});
+nextBtn.addEventListener("click", () => {
+  if (currentQuestionIndex < quizQuestions.length - 1) {
+    currentQuestionIndex++;
+    showQuestion();
+  } else {
+    showResults();
+  }
+});
 
 function startQuiz() {
   // reset vars
   currentQuestionIndex = 0;
   score = 0;
   scoreSpan.textContent = 0;
+  userAnswers = new Array(quizQuestions.length).fill(null);
 
   startScreen.classList.remove("active");
   quizScreen.classList.add("active");
@@ -88,10 +118,11 @@ function startQuiz() {
 }
 
 function showQuestion() {
-  // reset state
-  answersDisabled = false;
-
   const currentQuestion = quizQuestions[currentQuestionIndex];
+  const savedAnswerIndex = userAnswers[currentQuestionIndex];
+
+  // lock answers if this question was already answered
+  answersDisabled = savedAnswerIndex !== null;
 
   currentQuestionSpan.textContent = currentQuestionIndex + 1;
 
@@ -102,29 +133,51 @@ function showQuestion() {
 
   answersContainer.innerHTML = "";
 
-  currentQuestion.answers.forEach((answer) => {
+  currentQuestion.answers.forEach((answer, index) => {
     const button = document.createElement("button");
     button.textContent = answer.text;
     button.classList.add("answer-btn");
-
     button.dataset.correct = answer.correct;
+    button.dataset.index = index;
+
+    // restore previous answer highlighting
+    if (savedAnswerIndex !== null) {
+      if (answer.correct) {
+        button.classList.add("correct");
+      } else if (index === savedAnswerIndex) {
+        button.classList.add("incorrect");
+      }
+    }
 
     button.addEventListener("click", selectAnswer);
-
     answersContainer.appendChild(button);
   });
+
+  // update nav buttons
+  prevBtn.disabled = currentQuestionIndex === 0;
+  nextBtn.disabled = savedAnswerIndex === null;
+  nextBtn.textContent =
+    currentQuestionIndex === quizQuestions.length - 1
+      ? "Finish \u2192"
+      : "Next \u2192";
 }
 
 function selectAnswer(event) {
-  // optimization check
   if (answersDisabled) return;
-
   answersDisabled = true;
 
   const selectedButton = event.target;
-  const isCorrect = selectedButton.dataset.correct === "true";
+  const selectedIndex = parseInt(selectedButton.dataset.index);
 
-  // Here Array.from() is used to convert the NodeList returned by answersContainer.children into an array, this is because the NodeList is not an array and we need to use the forEach method
+  // save answer and recalculate score
+  userAnswers[currentQuestionIndex] = selectedIndex;
+  score = userAnswers.reduce((total, answerIndex, qIndex) => {
+    if (answerIndex === null) return total;
+    return total + (quizQuestions[qIndex].answers[answerIndex].correct ? 1 : 0);
+  }, 0);
+  scoreSpan.textContent = score;
+
+  // highlight correct/incorrect
   Array.from(answersContainer.children).forEach((button) => {
     if (button.dataset.correct === "true") {
       button.classList.add("correct");
@@ -133,21 +186,8 @@ function selectAnswer(event) {
     }
   });
 
-  if (isCorrect) {
-    score++;
-    scoreSpan.textContent = score;
-  }
-
-  setTimeout(() => {
-    currentQuestionIndex++;
-
-    // check if there are more questions or if the quiz is over
-    if (currentQuestionIndex < quizQuestions.length) {
-      showQuestion();
-    } else {
-      showResults();
-    }
-  }, 1000);
+  // enable Next/Finish button
+  nextBtn.disabled = false;
 }
 
 function showResults() {
